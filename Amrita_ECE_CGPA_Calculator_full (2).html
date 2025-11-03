@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Amrita ECE — CGPA Calculator (Dark)</title>
+  <meta name="description" content="CGPA & SGPA calculator for Amrita ECE — preloaded subjects (Sem 1-8) and dark theme."/>
+  <style>
+    :root{color-scheme: dark;}
+    body{font-family:Inter,system-ui,Arial,sans-serif;background:#0b1220;color:#e6eef8;margin:0;padding:14px;}
+    .wrap{max-width:980px;margin:12px auto;background:linear-gradient(180deg,#0f1724, #0b1220);border-radius:12px;padding:14px;box-shadow:0 8px 30px rgba(2,6,23,0.6);border:1px solid rgba(255,255,255,0.03);}
+    h1{font-size:18px;margin:0 0 6px;text-align:center}
+    p.lead{font-size:13px;color:#9fb0c8;margin:6px 0 14px;text-align:center}
+    label{display:block;margin:8px 0;font-size:13px;color:#9fb0c8}
+    select,input,textarea{padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.06);background:#071021;color:#e6eef8;font-size:14px;width:100%;box-sizing:border-box}
+    table{width:100%;border-collapse:collapse;margin-top:8px;overflow:auto;display:block}
+    thead th{position:sticky;top:0;background:rgba(3,7,18,0.6);backdrop-filter:blur(4px);z-index:2;padding:10px;text-align:left;font-size:13px;color:#9fb0c8;border-bottom:1px solid rgba(255,255,255,0.03)}
+    td{padding:8px;border-bottom:1px solid rgba(255,255,255,0.03);vertical-align:middle;font-size:14px}
+    .btn{display:inline-block;padding:9px 12px;border-radius:9px;border:0;cursor:pointer;font-weight:700;margin:6px 6px 6px 0}
+    .btn-add{background:#4f46e5;color:white}
+    .btn-remove{background:#ef4444;color:white}
+    .btn-compute{background:#16a34a;color:white;float:right}
+    .flex{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+    .results{display:flex;gap:12px;margin-top:14px;flex-wrap:wrap}
+    .card{flex:1;min-width:140px;padding:12px;border-radius:10px;background:linear-gradient(180deg,rgba(255,255,255,0.02),rgba(255,255,255,0.01));text-align:center}
+    .muted{color:#9fb0c8;font-size:13px}
+    .center{text-align:center}
+    @media(min-width:800px){table{display:table} .wrap{padding:18px} }
+    .small{font-size:12px;color:#9fb0c8}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="wrap" role="application">
+    <h1>Amrita ECE — SGPA & CGPA Calculator (Dark)</h1>
+    <p class="lead">All 8 semesters preloaded from Amrita ECE curriculum. Enter grades for the current semester, and SGPA+credits for previous semesters (if any). Grading: O=10 → F=0.</p>
+
+    <label>Current Semester
+      <select id="semester" onchange="loadSemester()">
+        <option value="1">Semester 1</option>
+        <option value="2">Semester 2</option>
+        <option value="3">Semester 3</option>
+        <option value="4">Semester 4</option>
+        <option value="5">Semester 5</option>
+        <option value="6">Semester 6</option>
+        <option value="7">Semester 7</option>
+        <option value="8">Semester 8</option>
+      </select>
+    </label>
+
+    <h3 style="margin-top:12px">This semester — subjects & credits</h3>
+    <div class="controls">
+      <button class="btn btn-add" onclick="addSubject()">+ Add subject</button>
+      <button class="btn" onclick="resetForm()">Reset</button>
+      <button class="btn" onclick="downloadCSV()">Download CSV</button>
+      <button class="btn btn-compute" onclick="compute()">Compute</button>
+    </div>
+
+    <table id="subjectsTable" aria-label="Current semester subjects">
+      <thead><tr><th style="width:6%">#</th><th style="width:52%">Subject</th><th style="width:12%">Credits</th><th style="width:15%">Grade</th><th style="width:15%">Action</th></tr></thead>
+      <tbody id="subjectsBody"></tbody>
+    </table>
+
+    <div id="previousBlock" style="display:none;margin-top:14px">
+      <h3>Previous semesters (enter only total credits & SGPA)</h3>
+      <table id="previousTable" aria-label="Previous semesters">
+        <thead><tr><th style="width:30%">Semester</th><th style="width:35%">Total Credits</th><th style="width:35%">SGPA</th></tr></thead>
+        <tbody id="previousBody"></tbody>
+      </table>
+    </div>
+
+    <div class="results" role="status" aria-live="polite">
+      <div class="card">
+        <div class="small muted">This Semester SGPA</div>
+        <div id="sgpa" style="font-size:22px;font-weight:700">0.00</div>
+      </div>
+      <div class="card">
+        <div class="small muted">This Semester Credits</div>
+        <div id="totalCredits" style="font-size:22px;font-weight:700">0</div>
+      </div>
+      <div class="card">
+        <div class="small muted">Cumulative CGPA (incl. this sem)</div>
+        <div id="cgpa" style="font-size:22px;font-weight:700">0.00</div>
+      </div>
+    </div>
+
+    <p class="muted" style="margin-top:10px">Note: Failed courses (F/FA/I/W) are counted with 0 grade points. Results rounded to two decimals.</p>
+  </div>
+
+<script>
+  // grading per your specification
+  const GRADE_POINTS = {'O':10,'A+':9,'A':8,'B+':7,'B':6,'C':5,'P':4,'F':0,'FA':0,'I':0,'W':0};
+
+  // curriculum (copied from your uploaded file)
+  const curriculum = {
+      1: [
+        {code:'23ECE101', name:'Nature Inspired Engineering', credits:3},
+        {code:'23MAT124', name:'Engineering Mathematics I', credits:4},
+        {code:'23ECE102', name:'Problem Solving and Algorithmic Thinking', credits:2},
+        {code:'23ECE103', name:'Fundamentals of Electrical Engineering', credits:3},
+        {code:'23ECE104', name:'Physics of Semiconductors', credits:3},
+        {code:'23ECE105', name:'Computer Programming', credits:3},
+        {code:'23ECE181', name:'Electrical Engineering Laboratory', credits:1},
+        {code:'23ECE182', name:'Computer Programming Laboratory', credits:1},
+        {code:'22ADM101', name:'Foundations of Indian Heritage', credits:2},
+        {code:'22AVP103', name:'Mastery Over Mind (MAOM)', credits:2}
+      ],
+      2: [
+        {code:'23MAT130', name:'Engineering Mathematics II', credits:4},
+        {code:'23ECE111', name:'Electronic Devices and Circuits', credits:3},
+        {code:'23ECE112', name:'Signal Processing I', credits:3},
+        {code:'23ECE114', name:'Network Analysis', credits:3},
+        {code:'23ECE183', name:'Signal Processing-I Laboratory', credits:1},
+        {code:'23ECE184', name:'Introduction to Internet of Things (Lab)', credits:1},
+        {code:'23ECE185', name:'Electronic Devices & Circuits Laboratory', credits:1},
+        {code:'23ENG101', name:'Technical Communication', credits:3},
+        {code:'22ADM111', name:'Glimpses of Glorious India', credits:2}
+      ],
+      3: [
+        {code:'23ECE201', name:'Digital Electronics', credits:3},
+        {code:'23ECE202', name:'Analog Electronics I', credits:3},
+        {code:'23ECE203', name:'Signal Processing II', credits:3},
+        {code:'23ECE204', name:'Electromagnetic Theory and Waves', credits:4},
+        {code:'23ECE205', name:'Foundations of Data Science', credits:4},
+        {code:'23ECE281', name:'Digital Electronics Laboratory', credits:1},
+        {code:'23ECE282', name:'Analog Electronics Laboratory', credits:1},
+        {code:'23ECE283', name:'Digital Signal Processing Laboratory', credits:1},
+        {code:'23CHY109', name:'Engineering Chemistry B', credits:3},
+        {code:'23LSE201', name:'Life Skills for Engineers I', credits:1}
+      ],
+      4: [
+        {code:'23ECE211', name:'Microcontrollers & Interfacing', credits:3},
+        {code:'23ECE212', name:'Analog Electronics II', credits:3},
+        {code:'23ECE213', name:'Communication Theory', credits:4},
+        {code:'23ECE215', name:'Control Systems', credits:4},
+        {code:'23ECE216', name:'Machine Learning', credits:3},
+        {code:'23ECE284', name:'Microcontrollers & Interfacing Laboratory', credits:1},
+        {code:'23ECE285', name:'Machine Learning Laboratory', credits:1},
+        {code:'23ECE286', name:'Circuits and Communication Laboratory', credits:1},
+        {code:'23LSE211', name:'Life Skills for Engineers II', credits:2},
+        {code:'23LAW300', name:'Indian Constitution', credits:0}
+      ],
+      5: [
+        {code:'23ECE301', name:'Computer Systems and Architecture', credits:3},
+        {code:'23ECE302', name:'VLSI Design', credits:3},
+        {code:'23ECE303', name:'Radio Frequency and Microwave Engineering', credits:3},
+        {code:'23ECE304', name:'Digital Communication', credits:4},
+        {code:'23PE1', name:'Professional Elective I', credits:3},
+        {code:'23ECE381', name:'Open Laboratory I', credits:1},
+        {code:'23ECE382', name:'Radio Frequency and Microwave Laboratory', credits:1},
+        {code:'23ECE383', name:'VLSI Design Laboratory', credits:1},
+        {code:'23ECE384', name:'Communication Systems Laboratory', credits:1},
+        {code:'23LSE301', name:'Life Skills for Engineers III', credits:2},
+        {code:'23LIV390', name:'Live-in - Lab I', credits:3}
+      ],
+      6: [
+        {code:'23ECE311', name:'Wireless Communication & Networks', credits:3},
+        {code:'23ECE312', name:'Computer Networks and Protocols', credits:3},
+        {code:'23ECE313', name:'Embedded Systems', credits:3},
+        {code:'23PE2', name:'Professional Elective II', credits:3},
+        {code:'23PE3', name:'Professional Elective III', credits:3},
+        {code:'23ECE385', name:'Open Laboratory II', credits:2},
+        {code:'23ECE386', name:'Wireless Communication and Networks Laboratory', credits:1},
+        {code:'23ECE387', name:'Embedded Systems Laboratory', credits:1},
+        {code:'23LSE311', name:'Life Skills for Engineers IV', credits:2},
+        {code:'23LIV490', name:'Live-in –Lab II', credits:3}
+      ],
+      7: [
+        {code:'23PE4', name:'Professional Elective IV', credits:3},
+        {code:'23PE5', name:'Professional Elective V', credits:3},
+        {code:'23PE6', name:'Professional Elective VI', credits:3},
+        {code:'23ECE498', name:'Project Phase I', credits:8},
+        {code:'23FREE', name:'Free Elective', credits:2},
+        {code:'23ECE497', name:'Technical Writing', credits:0}
+      ],
+      8: [
+        {code:'23ECE499', name:'Project Phase II', credits:6}
+      ]
+  };
+
+  function gradeOptionsHTML(selected='O') {
+    const grades = ['O','A+','A','B+','B','C','P','F','FA','I','W'];
+    return grades.map(g=>`<option value="${g}" ${g===selected?'selected':''}>${g}</option>`).join('');
+  }
+
+  function loadSemester(){
+    const sem = Number(document.getElementById('semester').value);
+    const tbody = document.getElementById('subjectsBody');
+    tbody.innerHTML = '';
+    const subjects = curriculum[sem] || [];
+    subjects.forEach((s, idx)=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="center">${idx+1}</td>
+        <td><input type="text" value="${s.code} - ${s.name}" style="width:100%"></td>
+        <td><input type="number" min="0" step="0.5" value="${s.credits}" style="width:100%"></td>
+        <td><select style="width:100%">${gradeOptionsHTML('O')}</select></td>
+        <td class="center"><button class="btn btn-remove" onclick="removeSubjectRow(this)">Remove</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    const prevBlock = document.getElementById('previousBlock');
+    const prevBody = document.getElementById('previousBody');
+    prevBody.innerHTML = '';
+    if (sem > 1) {
+      prevBlock.style.display = 'block';
+      for (let s=1; s<sem; s++) {
+        const row = document.createElement('tr');
+        let defaultCredits = 0;
+        if (Array.isArray(curriculum[s])) defaultCredits = curriculum[s].reduce((a,b)=>a+(Number(b.credits)||0),0);
+        if (!defaultCredits) defaultCredits = 20;
+        row.innerHTML = `<td>Semester ${s}</td>
+                         <td><input type="number" min="0" step="0.5" value="${defaultCredits}" style="width:95%"></td>
+                         <td><input type="number" min="0" max="10" step="0.01" value="8.00" style="width:95%"></td>`;
+        prevBody.appendChild(row);
+      }
+    } else {
+      prevBlock.style.display = 'none';
+    }
+    computeThisSemesterTotals();
+  }
+
+  function removeSubjectRow(btn){
+    const tr = btn.closest('tr');
+    tr.remove();
+    Array.from(document.querySelectorAll('#subjectsBody tr')).forEach((r,i)=> r.children[0].innerText = i+1);
+    computeThisSemesterTotals();
+  }
+
+  function addSubject(){
+    const tbody = document.getElementById('subjectsBody');
+    const idx = tbody.children.length;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="center">${idx+1}</td>
+      <td><input type="text" value="New Subject" style="width:100%"></td>
+      <td><input type="number" min="0" step="0.5" value="3" style="width:100%"></td>
+      <td><select style="width:100%">${gradeOptionsHTML('O')}</select></td>
+      <td class="center"><button class="btn btn-remove" onclick="removeSubjectRow(this)">Remove</button></td>`;
+    tbody.appendChild(tr);
+    computeThisSemesterTotals();
+  }
+
+  function computeThisSemesterTotals(){
+    const rows = document.querySelectorAll('#subjectsBody tr');
+    let tot=0;
+    rows.forEach(r=>{
+      const c = parseFloat(r.children[2].children[0].value) || 0;
+      tot += c;
+    });
+    document.getElementById('totalCredits').innerText = tot.toFixed(1).replace('.0','');
+  }
+
+  function compute(){
+    const rows = document.querySelectorAll('#subjectsBody tr');
+    let totalCredits = 0, weightedSum = 0;
+    rows.forEach(r=>{
+      const credit = parseFloat(r.children[2].children[0].value) || 0;
+      const grade = r.children[3].children[0].value;
+      const gp = (GRADE_POINTS.hasOwnProperty(grade)) ? Number(GRADE_POINTS[grade]) : 0;
+      totalCredits += credit;
+      weightedSum += credit * gp;
+    });
+    const rawSgpa = totalCredits ? (weightedSum/totalCredits) : 0;
+    const sgpa = Math.round(rawSgpa*100)/100;
+    document.getElementById('sgpa').innerText = sgpa.toFixed(2);
+
+    let prevWeighted = 0, prevCredits = 0;
+    const prevRows = document.querySelectorAll('#previousBody tr');
+    prevRows.forEach(r=>{
+      const c = parseFloat(r.children[1].children[0].value) || 0;
+      const g = parseFloat(r.children[2].children[0].value) || 0;
+      prevCredits += c;
+      prevWeighted += (c * g);
+    });
+
+    const overallCredits = prevCredits + totalCredits;
+    const overallWeighted = prevWeighted + weightedSum;
+    const rawCgpa = overallCredits ? (overallWeighted/overallCredits) : 0;
+    const cgpa = Math.round(rawCgpa*100)/100;
+    document.getElementById('cgpa').innerText = cgpa.toFixed(2);
+
+    document.getElementById('totalCredits').innerText = totalCredits.toFixed(1).replace('.0','');
+  }
+
+  function resetForm(){
+    loadSemester();
+    document.getElementById('sgpa').innerText = '0.00';
+    document.getElementById('cgpa').innerText = '0.00';
+  }
+
+  function downloadCSV(){
+    const sem = document.getElementById('semester').value;
+    const rows = document.querySelectorAll('#subjectsBody tr');
+    let csv = `Semester ${sem} Subjects,Credits,Grade\n`;
+    rows.forEach(r=>{
+      const subj = r.children[1].children[0].value.replace(/,/g,'');
+      const cred = r.children[2].children[0].value;
+      const grade = r.children[3].children[0].value;
+      csv += `${subj},${cred},${grade}\n`;
+    });
+    csv += `\nThis Semester SGPA,${document.getElementById('sgpa').innerText}\n`;
+    csv += `Cumulative CGPA,${document.getElementById('cgpa').innerText}\n`;
+
+    const blob = new Blob([csv], {type: 'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `semester-${sem}-grades-sgpa.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // initialize
+  loadSemester();
+
+  document.addEventListener('input', (e)=>{
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) {
+      computeThisSemesterTotals();
+    }
+  });
+</script>
+</body>
+</html>
